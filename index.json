@@ -10,7 +10,7 @@
     "version": "0.0.3",
     "notes": "WitAnime JS Extension with custom StreamWish/Mp4Upload extractors and latest updates fix",
     "sourceCode": "",
-    "sourceCodeUrl": "https://raw.githubusercontent.com/9vsv6/mangayomi-ar-extensions/refs/heads/main/witanime.js",
+    "sourceCodeUrl": "https://raw.githubusercontent.com/9vsv6/mangayomi-ar-extensions/refs/heads/main/anime/witanime.js",
     "sourceCodeLanguage": 1,
     "isActive": true,
     "isAdded": false,
