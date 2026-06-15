@@ -1,0 +1,19 @@
+[
+  {
+    "id": 333564557,
+    "name": "WitAnime",
+    "baseUrl": "https://witanime.you",
+    "lang": "ar",
+    "iconUrl": "https://witanime.you/wp-content/uploads/2023/08/cropped-Logo-WITU-192x192.png",
+    "typeSource": "single",
+    "itemType": 1,
+    "version": "0.0.3",
+    "notes": "WitAnime JS Extension with custom StreamWish/Mp4Upload extractors and latest updates fix",
+    "sourceCode": "",
+    "sourceCodeUrl": "https://raw.githubusercontent.com/9vsv6/mangayomi-ar-extensions/main/witanime.js",
+    "sourceCodeLanguage": 1,
+    "isActive": true,
+    "isAdded": false,
+    "isNsfw": false
+  }
+]
