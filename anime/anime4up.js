@@ -6,7 +6,7 @@ const mangayomiSources = [{
     "iconUrl": "https://w1.anime4up.rest/wp-content/uploads/2026/04/cropped-Logo-WITU-192x192.png",
     "typeSource": "single",
     "itemType": 1,
-    "version": "0.0.2",
+    "version": "0.0.4",
     "pkgPath": "",
     "notes": "Anime4Up JS Extension with custom extractors for Share4max, Larhu, StreamWish, Mp4Upload, VOE, and Uqload"
 }];
@@ -17,6 +17,40 @@ class DefaultExtension extends MProvider {
             "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
             "Referer": "https://w1.anime4up.rest/"
         };
+    }
+    
+    fixUtf8(str) {
+        if (!str) return "";
+        let result = "";
+        let i = 0;
+        while (i < str.length) {
+            const c1 = str.charCodeAt(i++);
+            if (c1 < 128) {
+                result += String.fromCharCode(c1);
+            } else if (c1 > 191 && c1 < 224) {
+                if (i >= str.length) break;
+                const c2 = str.charCodeAt(i++);
+                result += String.fromCharCode(((c1 & 31) << 6) | (c2 & 63));
+            } else if (c1 > 223 && c1 < 240) {
+                if (i + 1 >= str.length) break;
+                const c2 = str.charCodeAt(i++);
+                const c3 = str.charCodeAt(i++);
+                result += String.fromCharCode(((c1 & 15) << 12) | ((c2 & 63) << 6) | (c3 & 63));
+            } else if (c1 > 239 && c1 < 248) {
+                if (i + 2 >= str.length) break;
+                const c2 = str.charCodeAt(i++);
+                const c3 = str.charCodeAt(i++);
+                const c4 = str.charCodeAt(i++);
+                let cp = ((c1 & 7) << 18) | ((c2 & 63) << 12) | ((c3 & 63) << 6) | (c4 & 63);
+                if (cp < 0x10000) {
+                    result += String.fromCharCode(cp);
+                } else {
+                    cp -= 0x10000;
+                    result += String.fromCharCode((cp >> 10) + 0xD800, (cp & 0x3FF) + 0xDC00);
+                }
+            }
+        }
+        return result;
     }
     
     get supportsLatest() {
@@ -72,7 +106,7 @@ class DefaultExtension extends MProvider {
             throw new Error(`Failed to fetch popular list: ${res.statusCode}`);
         }
         
-        const doc = new Document(res.body);
+        const doc = new Document(this.fixUtf8(res.body));
         const cards = doc.select('div.anime-card-container');
         const list = [];
         for (const card of cards) {
@@ -110,7 +144,7 @@ class DefaultExtension extends MProvider {
             throw new Error(`Failed to fetch latest list: ${res.statusCode}`);
         }
         
-        const doc = new Document(res.body);
+        const doc = new Document(this.fixUtf8(res.body));
         const cards = doc.select('div.anime-card-container');
         const list = [];
         for (const card of cards) {
@@ -177,7 +211,7 @@ class DefaultExtension extends MProvider {
             };
         }
         
-        const doc = new Document(res.body);
+        const doc = new Document(this.fixUtf8(res.body));
         const cards = doc.select('div.anime-card-container');
         const list = [];
         for (const card of cards) {
@@ -208,12 +242,25 @@ class DefaultExtension extends MProvider {
     
     async getDetail(url) {
         const client = new Client();
+        
+        // If it's an episode page, resolve parent anime details URL first
+        if (url.includes("/episode/")) {
+            const tempRes = await client.get(url, this.getHeaders(url));
+            if (tempRes.statusCode === 200) {
+                const tempDoc = new Document(this.fixUtf8(tempRes.body));
+                const parentEl = tempDoc.selectFirst('a[href*="/anime/"]');
+                if (parentEl) {
+                    url = parentEl.getHref;
+                }
+            }
+        }
+        
         const res = await client.get(url, this.getHeaders(url));
         if (res.statusCode !== 200) {
             throw new Error(`Failed to fetch detail: ${res.statusCode}`);
         }
         
-        const doc = new Document(res.body);
+        const doc = new Document(this.fixUtf8(res.body));
         
         const titleEl = doc.selectFirst('h1.anime-details-title');
         const name = titleEl ? titleEl.text.trim() : "";
@@ -243,7 +290,7 @@ class DefaultExtension extends MProvider {
                 break;
             }
             
-            const pageDoc = new Document(pageRes.body);
+            const pageDoc = new Document(this.fixUtf8(pageRes.body));
             const cards = pageDoc.select('div#episodesList div.pinned-card');
             if (cards.length === 0) {
                 break;
@@ -706,7 +753,7 @@ class DefaultExtension extends MProvider {
             throw new Error(`Failed to fetch episode page: ${res.statusCode}`);
         }
         
-        const doc = new Document(res.body);
+        const doc = new Document(this.fixUtf8(res.body));
         const serverElements = doc.select('ul#episode-servers li');
         const videos = [];
         
