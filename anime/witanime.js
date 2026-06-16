@@ -6,7 +6,7 @@ const mangayomiSources = [{
     "iconUrl": "https://witanime.you/wp-content/uploads/2023/08/cropped-Logo-WITU-192x192.png",
     "typeSource": "single",
     "itemType": 1,
-    "version": "0.0.4",
+    "version": "0.0.5",
     "pkgPath": "",
     "notes": "WitAnime JS Extension with custom StreamWish/Mp4Upload extractors and latest updates fix"
 }];
@@ -361,6 +361,9 @@ class DefaultExtension extends MProvider {
         const separator = '#EXT-X-STREAM-INF:';
         const parts = masterPlaylist.split(separator);
         const videos = [];
+        const onlyUaHeaders = {
+            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"
+        };
         
         for (let i = 1; i < parts.length; i++) {
             const part = parts[i];
@@ -384,7 +387,133 @@ class DefaultExtension extends MProvider {
                         url: videoUrl,
                         quality: `${prefix} - ${resolution}`,
                         originalUrl: videoUrl,
-                        headers: playlistHeaders
+                        headers: onlyUaHeaders
+                    });
+                }
+            }
+        }
+        
+        return videos;
+    }
+
+    async customVideaExtractor(url, prefix) {
+        const client = new Client();
+        const headers = {
+            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
+            "Referer": "https://witanime.you/"
+        };
+        const res = await client.get(url, headers);
+        if (res.statusCode !== 200) {
+            return [];
+        }
+        
+        const html = res.body;
+        const videoIdMatch = url.match(/(?:\?v=|player\/v\/|videok\/[^\-]+\-)([^?#&]+)/);
+        if (!videoIdMatch) {
+            return [];
+        }
+        const videoId = videoIdMatch[1];
+        
+        const xtMatch = html.match(/_xt\s*=\s*"([^"]+)"/);
+        if (!xtMatch) {
+            return [];
+        }
+        
+        const nonce = xtMatch[1];
+        const l = nonce.substring(0, 32);
+        const s = nonce.substring(32);
+        const staticSecret = 'xHb0ZvME5q8CBcoQi6AngerDu3FGO9fkUlwPmLVY_RTzj2hJIS4NasXWKy1td7p';
+        let result = '';
+        for (let i = 0; i < 32; i++) {
+            const secretIdx = staticSecret.indexOf(l[i]);
+            if (secretIdx === -1) continue;
+            const idx = secretIdx - 31;
+            result += s[i - idx];
+        }
+        
+        const chars = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789";
+        let randomSeed = "";
+        for (let i = 0; i < 8; i++) {
+            randomSeed += chars.charAt(Math.floor(Math.random() * chars.length));
+        }
+        
+        const tVal = result.substring(0, 16);
+        const xmlUrl = `https://videa.hu/player/xml?v=${videoId}&_s=${randomSeed}&_t=${tVal}`;
+        const xmlRes = await client.get(xmlUrl, headers);
+        if (xmlRes.statusCode !== 200) {
+            return [];
+        }
+        
+        let xmlText = xmlRes.body;
+        if (!xmlText.startsWith('<?xml')) {
+            const key = result.substring(16) + randomSeed + (xmlRes.headers['x-videa-xs'] || '');
+            
+            // Decrypt with RC4
+            function rc4Decrypt(cipherBytes, keyStr) {
+                let S = [];
+                for (let i = 0; i < 256; i++) {
+                    S[i] = i;
+                }
+                let j = 0;
+                for (let i = 0; i < 256; i++) {
+                    j = (j + S[i] + keyStr.charCodeAt(i % keyStr.length)) % 256;
+                    let temp = S[i];
+                    S[i] = S[j];
+                    S[j] = temp;
+                }
+                let i = 0;
+                j = 0;
+                let decrypted = "";
+                for (let m = 0; m < cipherBytes.length; m++) {
+                    i = (i + 1) % 256;
+                    j = (j + S[i]) % 256;
+                    let temp = S[i];
+                    S[i] = S[j];
+                    S[j] = temp;
+                    let k = S[(S[i] + S[j]) % 256];
+                    decrypted += String.fromCharCode(k ^ cipherBytes[m]);
+                }
+                return decrypted;
+            }
+            
+            const cipherBytes = this.base64ToBytes(xmlText);
+            xmlText = rc4Decrypt(cipherBytes, key);
+        }
+        
+        const videos = [];
+        const sourceUrlMatches = xmlText.match(/<video_source[^>]*>([\s\S]*?)<\/video_source>/g);
+        if (sourceUrlMatches) {
+            for (const match of sourceUrlMatches) {
+                const urlMatch = match.match(/<video_source[^>]*>([\s\S]*?)<\/video_source>/);
+                let videoUrl = urlMatch[1].trim();
+                
+                const nameMatch = match.match(/name="([^"]+)"/);
+                const expMatch = match.match(/exp="([^"]+)"/);
+                
+                if (videoUrl) {
+                    if (videoUrl.startsWith('//')) {
+                        videoUrl = 'https:' + videoUrl;
+                    }
+                    
+                    const name = nameMatch ? nameMatch[1] : 'Video';
+                    const exp = expMatch ? expMatch[1] : '';
+                    
+                    if (name && exp) {
+                        const hashTag = `<hash_value_${name}>([^<]+)<\/hash_value_${name}>`;
+                        const hashMatch = xmlText.match(new RegExp(hashTag));
+                        if (hashMatch) {
+                            const hashVal = hashMatch[1].trim();
+                            videoUrl = videoUrl + (videoUrl.includes('?') ? '&' : '?') + `md5=${hashVal}&expires=${exp}`;
+                        }
+                    }
+                    
+                    videos.push({
+                        url: videoUrl,
+                        quality: `${prefix} Videa - ${name}`,
+                        originalUrl: videoUrl,
+                        headers: {
+                            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"
+                        }
                     });
                 }
             }
@@ -493,7 +622,7 @@ class DefaultExtension extends MProvider {
         const serverElements = doc.select('a.server-link');
         const videos = [];
         const apiKey = "23a97133-caf3-4eb4-9466-93d0a4ff8198";
-        const wishDomains = ["streamwish", "hgcloud.to", "hgplaycdn.com", "hglamioz.com", "niramirus.com", "playnixes.com", "medixiru.com", "hanerix.com", "audinifer.com", "vibuxer.com", "masukestin.com"];
+        const wishDomains = ["streamwish", "hgcloud.to", "hgplaycdn.com", "hglamioz.com", "niramirus.com", "playnixes.com", "medixiru.com", "hanerix.com", "audinifer.com", "vibuxer.com", "masukestin.com", "lulustream", "lulu"];
         
         for (const element of serverElements) {
             const serverIdStr = element.attr('data-server-id');
@@ -535,7 +664,8 @@ class DefaultExtension extends MProvider {
             if (isStreamWish) {
                 streamwishUrl = streamwishUrl.replace("hgcloud.to", "hgplaycdn.com")
                                              .replace("streamwish.to", "hgplaycdn.com")
-                                             .replace("streamwish.com", "hgplaycdn.com");
+                                             .replace("streamwish.com", "hgplaycdn.com")
+                                             .replace("lulustream.com", "hgplaycdn.com");
                 try {
                     const wishVideos = await this.customStreamWishExtractor(streamwishUrl, serverName);
                     if (wishVideos) videos.push(...wishVideos);
@@ -548,6 +678,13 @@ class DefaultExtension extends MProvider {
                     if (mp4Videos) videos.push(...mp4Videos);
                 } catch (e) {
                     console.log(`Mp4Upload error: ${e}`);
+                }
+            } else if (decoded.includes("videa.hu") || decoded.includes("videakid.hu")) {
+                try {
+                    const videaVideos = await this.customVideaExtractor(decoded, serverName);
+                    if (videaVideos) videos.push(...videaVideos);
+                } catch (e) {
+                    console.log(`Videa error: ${e}`);
                 }
             } else if (decoded.startsWith("https://yonaplay.net/embed.php?id=")) {
                 try {
@@ -575,12 +712,16 @@ class DefaultExtension extends MProvider {
                                 if (isSubStreamWish) {
                                     subUrl = subUrl.replace("hgcloud.to", "hgplaycdn.com")
                                                    .replace("streamwish.to", "hgplaycdn.com")
-                                                   .replace("streamwish.com", "hgplaycdn.com");
+                                                   .replace("streamwish.com", "hgplaycdn.com")
+                                                   .replace("lulustream.com", "hgplaycdn.com");
                                     const wishVideos = await this.customStreamWishExtractor(subUrl, `${serverName} (Yona)`);
                                     if (wishVideos) videos.push(...wishVideos);
                                 } else if (subUrl.includes("mp4upload.com")) {
                                     const mp4Videos = await this.customMp4UploadExtractor(subUrl, `${serverName} (Yona)`);
                                     if (mp4Videos) videos.push(...mp4Videos);
+                                } else if (subUrl.includes("videa.hu") || subUrl.includes("videakid.hu")) {
+                                    const videaVideos = await this.customVideaExtractor(subUrl, `${serverName} (Yona)`);
+                                    if (videaVideos) videos.push(...videaVideos);
                                 }
                             }
                         }

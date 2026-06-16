@@ -6,7 +6,7 @@ const mangayomiSources = [{
     "iconUrl": "https://w1.anime4up.rest/wp-content/uploads/2026/04/cropped-Logo-WITU-192x192.png",
     "typeSource": "single",
     "itemType": 1,
-    "version": "0.0.1",
+    "version": "0.0.2",
     "pkgPath": "",
     "notes": "Anime4Up JS Extension with custom extractors for Share4max, Larhu, StreamWish, Mp4Upload, VOE, and Uqload"
 }];
@@ -65,9 +65,7 @@ class DefaultExtension extends MProvider {
     
     async getPopular(page) {
         const client = new Client();
-        const url = page === 1 
-            ? "https://w1.anime4up.rest/%D9%82%D8%A7%D8%A6%D9%85%D8%A9-%D8%A7%D9%84%D8%A7%D9%86%D9%85%D9%8I/"
-            : `https://w1.anime4up.rest/%D9%82%D8%A7%D8%A6%D9%85%D8%A9-%D8%A7%D9%84%D8%A7%D9%86%D9%85%D9%8I/page/${page}/`;
+        const url = `https://w1.anime4up.rest/%D9%82%D8%A7%D8%A6%D9%85%D8%A9-%D8%A7%D9%84%D8%A7%D9%86%D9%85%D9%8A/page/${page}/`;
             
         const res = await client.get(url, this.getHeaders(url));
         if (res.statusCode !== 200) {
@@ -105,9 +103,7 @@ class DefaultExtension extends MProvider {
     
     async getLatestUpdates(page) {
         const client = new Client();
-        const url = page === 1 
-            ? "https://w1.anime4up.rest/episode/"
-            : `https://w1.anime4up.rest/episode/page/${page}/`;
+        const url = `https://w1.anime4up.rest/episode/page/${page}/`;
             
         const res = await client.get(url, this.getHeaders(url));
         if (res.statusCode !== 200) {
@@ -127,7 +123,7 @@ class DefaultExtension extends MProvider {
                 if (epEl) {
                     name = name + " - " + epEl.text.trim().replace(/\s+/g, ' ');
                 }
-                const link = epEl ? epEl.getHref : (titleEl.getHref || "");
+                const link = titleEl.getHref || "";
                 const imageUrl = imgEl.attr('data-src') || imgEl.attr('data-image') || imgEl.getSrc || "";
                 list.push({
                     name: name,
@@ -367,6 +363,9 @@ class DefaultExtension extends MProvider {
         const separator = '#EXT-X-STREAM-INF:';
         const parts = masterPlaylist.split(separator);
         const videos = [];
+        const onlyUaHeaders = {
+            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"
+        };
         
         for (let i = 1; i < parts.length; i++) {
             const part = parts[i];
@@ -390,7 +389,7 @@ class DefaultExtension extends MProvider {
                         url: videoUrl,
                         quality: `${prefix} - ${resolution}`,
                         originalUrl: videoUrl,
-                        headers: playlistHeaders
+                        headers: onlyUaHeaders
                     });
                 }
             }
