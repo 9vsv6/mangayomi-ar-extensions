@@ -640,56 +640,16 @@ class DefaultExtension extends MProvider {
         
         const manifestUrl = m3u8Match[1].replace(/\\/g, '');
         
-        const manifestHeaders = {
-            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
-            "Origin": "https://www.dailymotion.com",
-            "Referer": "https://www.dailymotion.com/"
-        };
-        
-        const mRes = await client.get(manifestUrl, manifestHeaders);
-        if (mRes.statusCode !== 200) return [];
-        
-        const manifestContent = mRes.body;
-        const videos = [];
-        
-        const lines = manifestContent.split('\n');
-        let currentStreamInfo = null;
-        
-        for (let line of lines) {
-            line = line.trim();
-            if (line.startsWith('#EXT-X-STREAM-INF:')) {
-                currentStreamInfo = line;
-            } else if (line.startsWith('http') && currentStreamInfo) {
-                let quality = "Video";
-                const nameMatch = currentStreamInfo.match(/NAME="([^"]+)"/);
-                const resMatch = currentStreamInfo.match(/RESOLUTION=\d+x(\d+)/);
-                
-                if (nameMatch) {
-                    quality = nameMatch[1] + "p";
-                } else if (resMatch) {
-                    quality = resMatch[1] + "p";
-                }
-                
-                let codecSuffix = "";
-                if (currentStreamInfo.includes("av01")) {
-                    codecSuffix = " (AV1)";
-                } else if (currentStreamInfo.includes("avc")) {
-                    codecSuffix = " (H264)";
-                }
-                
-                videos.push({
-                    url: line,
-                    quality: `${prefix} Dailymotion - ${quality}${codecSuffix}`,
-                    originalUrl: line,
-                    headers: {
-                        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"
-                    }
-                });
-                currentStreamInfo = null;
+        return [{
+            url: manifestUrl,
+            quality: `${prefix} Dailymotion - Auto (Multi Quality)`,
+            originalUrl: manifestUrl,
+            headers: {
+                "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
+                "Origin": "https://www.dailymotion.com",
+                "Referer": "https://www.dailymotion.com/"
             }
-        }
-        
-        return videos;
+        }];
     }
     
     async getVideoList(url) {
