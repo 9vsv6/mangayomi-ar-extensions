@@ -6,9 +6,9 @@ const mangayomiSources = [{
     "iconUrl": "https://witanime.you/wp-content/uploads/2023/08/cropped-Logo-WITU-192x192.png",
     "typeSource": "single",
     "itemType": 1,
-    "version": "0.0.8",
+    "version": "0.0.9",
     "pkgPath": "",
-    "notes": "Fix StreamWish black screen (prefer absolute hls2/hls3 over poisoned hls4) and isolate response timeout (parallelize server extraction with 15s per-server cap)"
+    "notes": "Fix Dailymotion no-sound issue by parsing audio sub-playlists"
 }];
 
 class DefaultExtension extends MProvider {
@@ -640,16 +640,107 @@ class DefaultExtension extends MProvider {
         
         const manifestUrl = m3u8Match[1].replace(/\\/g, '');
         
-        return [{
-            url: manifestUrl,
-            quality: `${prefix} Dailymotion - Auto (Multi Quality)`,
-            originalUrl: manifestUrl,
-            headers: {
-                "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
-                "Origin": "https://www.dailymotion.com",
-                "Referer": "https://www.dailymotion.com/"
+        // Fetch the master manifest
+        const manifestHeaders = {
+            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
+            "Referer": url
+        };
+        const mRes = await client.get(manifestUrl, manifestHeaders);
+        if (mRes.statusCode !== 200) return [];
+        
+        const manifestContent = mRes.body;
+        const audiosMap = {};
+        
+        // 1. Parse audio tracks
+        const lines = manifestContent.split('\n');
+        for (let i = 0; i < lines.length; i++) {
+            let line = lines[i].trim();
+            if (line.startsWith('#EXT-X-MEDIA:TYPE=AUDIO')) {
+                const groupIdMatch = line.match(/GROUP-ID="([^"]+)"/);
+                const uriMatch = line.match(/URI="([^"]+)"/);
+                const nameMatch = line.match(/NAME="([^"]+)"/);
+                if (groupIdMatch && uriMatch) {
+                    const groupId = groupIdMatch[1];
+                    const uri = uriMatch[1];
+                    const name = nameMatch ? nameMatch[1] : "Audio";
+                    audiosMap[groupId] = {
+                        url: uri,
+                        name: name
+                    };
+                }
             }
-        }];
+        }
+        
+        // 2. Parse video playlists and map to audios
+        const videos = [];
+        let currentStreamInfo = null;
+        for (let i = 0; i < lines.length; i++) {
+            let line = lines[i].trim();
+            if (line.startsWith('#EXT-X-STREAM-INF:')) {
+                currentStreamInfo = line;
+            } else if (line.startsWith('http') && currentStreamInfo) {
+                let quality = "Video";
+                const nameMatch = currentStreamInfo.match(/NAME="([^"]+)"/);
+                const resMatch = currentStreamInfo.match(/RESOLUTION=\d+x(\d+)/);
+                const audioGroupIdMatch = currentStreamInfo.match(/AUDIO="([^"]+)"/);
+                
+                if (nameMatch) {
+                    quality = nameMatch[1] + "p";
+                } else if (resMatch) {
+                    quality = resMatch[1] + "p";
+                }
+                
+                let codecSuffix = "";
+                if (currentStreamInfo.includes("av01")) {
+                    codecSuffix = " (AV1)";
+                } else if (currentStreamInfo.includes("avc")) {
+                    codecSuffix = " (H264)";
+                }
+                
+                const videoUrl = line;
+                const videoQuality = `${prefix} Dailymotion - ${quality}${codecSuffix}`;
+                
+                const audios = [];
+                if (audioGroupIdMatch) {
+                    const audioGroupId = audioGroupIdMatch[1];
+                    const audioTrack = audiosMap[audioGroupId];
+                    if (audioTrack) {
+                        audios.push({
+                            file: audioTrack.url,
+                            label: audioTrack.name
+                        });
+                    }
+                }
+                
+                videos.push({
+                    url: videoUrl,
+                    quality: videoQuality,
+                    originalUrl: videoUrl,
+                    headers: {
+                        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"
+                    },
+                    audios: audios
+                });
+                
+                currentStreamInfo = null;
+            }
+        }
+        
+        // If no individual qualities parsed, fall back to master manifest
+        if (videos.length === 0) {
+            videos.push({
+                url: manifestUrl,
+                quality: `${prefix} Dailymotion - Auto (Multi Quality)`,
+                originalUrl: manifestUrl,
+                headers: {
+                    "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
+                    "Origin": "https://www.dailymotion.com",
+                    "Referer": "https://www.dailymotion.com/"
+                }
+            });
+        }
+        
+        return videos;
     }
     
     async getVideoList(url) {

@@ -6,9 +6,9 @@ const mangayomiSources = [{
     "iconUrl": "https://w1.anime4up.rest/wp-content/uploads/2026/04/cropped-Logo-WITU-192x192.png",
     "typeSource": "single",
     "itemType": 1,
-    "version": "0.0.4",
+    "version": "0.0.5",
     "pkgPath": "",
-    "notes": "Anime4Up JS Extension with custom extractors for Share4max, Larhu, StreamWish, Mp4Upload, VOE, and Uqload"
+    "notes": "Fix stream quality names formatting (strip raw iframe HTML)"
 }];
 
 class DefaultExtension extends MProvider {
@@ -766,6 +766,9 @@ class DefaultExtension extends MProvider {
             if (serverNameA) {
                 const badge = serverNameA.selectFirst('span.quality');
                 let text = serverNameA.text;
+                if (text.includes('<')) {
+                    text = text.split('<')[0];
+                }
                 if (badge) {
                     text = text.replace(badge.text, "");
                 }
