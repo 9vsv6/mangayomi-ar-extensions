@@ -7,7 +7,7 @@ const mangayomiSources = [{
     "iconUrl": "https://www.google.com/s2/favicons?sz=256&domain=https://markazriwayat.com",
     "typeSource": "single",
     "itemType": 2,
-    "version": "0.0.3",
+    "version": "0.0.4",
     "pkgPath": "novel/src/ar/markazriwayat.js",
     "notes": ""
 }];
@@ -31,6 +31,28 @@ class DefaultExtension extends MProvider {
     title = title.replace(/[-–_&@#%^)(*+،؛:]+/g, " ");
     title = title.replace(/\s+/g, " ").trim();
     return title;
+  }
+
+  // In this engine, Document.selectFirst() always returns a truthy Element
+  // even when nothing matches (it wraps a null, so .outerHtml is ""). The
+  // usual `a || b || c` fallback chain therefore never reaches the fallbacks.
+  // This helper picks the first selector that actually yields content.
+  selectFirstNonEmpty(doc, selectors, attr = "outerHtml") {
+    for (const sel of selectors) {
+      let el;
+      try {
+        el = doc.selectFirst(sel);
+      } catch (e) {
+        continue;
+      }
+      if (el) {
+        const val = el[attr];
+        if (val && String(val).trim().length > 0) {
+          return el;
+        }
+      }
+    }
+    return null;
   }
 
   async getNonceAndRestUrl() {
@@ -340,28 +362,69 @@ class DefaultExtension extends MProvider {
     }
 
     const doc = new Document(res.body);
-    const titleEl =
-      doc.selectFirst("div.reader-chapter") ||
-      doc.selectFirst("h2.wp-manga-chapter-title") ||
-      doc.selectFirst("h1.entry-title") ||
-      doc.selectFirst("h1");
+
+    // Chapter title. selectFirst() never returns null in this engine, so we
+    // filter by actual text content.
+    const titleEl = this.selectFirstNonEmpty(doc, [
+      "div.reader-chapter",
+      "h2.wp-manga-chapter-title",
+      "h1.entry-title",
+      "h1.manga-title",
+      "h1",
+    ], "text");
     const title = titleEl ? titleEl.text.trim() : name;
 
-    // The actual chapter text lives in `div.reading-content`. Older themes
-    // used `.epcontent` / `.entry-content`, kept as fallbacks.
-    const contentEl =
-      doc.selectFirst("div.reading-content") ||
-      doc.selectFirst("div.epcontent") ||
-      doc.selectFirst("div.entry-content") ||
-      doc.selectFirst("div.entry-content_wrap");
-    if (!contentEl) {
+    // The chapter text lives in `div.reading-content`. Because selectFirst()
+    // returns a truthy-but-empty element on no match, pick the first selector
+    // that yields a non-empty block instead of using a `||` chain.
+    const contentEl = this.selectFirstNonEmpty(doc, [
+      "div.reading-content",
+      "div.reading-content.chapter-type-text",
+      "div.epcontent",
+      "div.entry-content",
+      "div.entry-content_wrap",
+    ]);
+
+    let html = "";
+    if (contentEl) {
+      html = contentEl.outerHtml;
+    } else {
+      // Last-resort fallback: cut the reading-content block out of the raw
+      // HTML ourselves, in case the parser mishandles the page. Use the
+      // specific class combo so we don't match a CSS rule reference.
+      const marker = "reading-content chapter-type-text";
+      const startIdx = res.body.indexOf(marker);
+      if (startIdx !== -1) {
+        const tagStart = res.body.lastIndexOf("<div", startIdx);
+        if (tagStart !== -1) {
+          let depth = 0;
+          let i = tagStart;
+          for (; i < res.body.length; i++) {
+            if (res.body[i] === "<") {
+              if (res.body.substring(i, i + 4) === "<div") {
+                depth++;
+                i += 3;
+              } else if (res.body.substring(i, i + 6) === "</div>") {
+                depth--;
+                i += 5;
+                if (depth === 0) {
+                  html = res.body.substring(tagStart, i + 1);
+                  break;
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+
+    if (!html || html.trim().length === 0) {
       throw new Error("Could not find chapter content in HTML");
     }
 
     // Strip hidden anti-scraping watermark spans injected between paragraphs
-    // (e.g. <span class="theam-chobf">...مركز الروايات...</span>). Element
-    // nodes in this engine have no .remove(), so remove them from the HTML.
-    const html = contentEl.outerHtml.replace(
+    // (e.g. <span class="theam-chobf">...مركز الروايات...</span>).
+    html = html.replace(
       /<span\b[^>]*class="[^"]*\btheam-chobf\b[^"]*"[^>]*>[\s\S]*?<\/span>/gi,
       ""
     );
