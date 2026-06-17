@@ -6,9 +6,9 @@ const mangayomiSources = [{
     "iconUrl": "https://witanime.you/wp-content/uploads/2023/08/cropped-Logo-WITU-192x192.png",
     "typeSource": "single",
     "itemType": 1,
-    "version": "0.0.5",
+    "version": "0.0.6",
     "pkgPath": "",
-    "notes": "WitAnime JS Extension with custom StreamWish/Mp4Upload extractors and latest updates fix"
+    "notes": "WitAnime JS Extension with custom StreamWish/Mp4Upload/Videa/Dailymotion extractors and latest updates fix"
 }];
 
 class DefaultExtension extends MProvider {
@@ -599,6 +599,73 @@ class DefaultExtension extends MProvider {
         }];
     }
     
+    async customDailymotionExtractor(url, prefix) {
+        const client = new Client();
+        const headers = {
+            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
+            "Referer": "https://witanime.you/"
+        };
+        const res = await client.get(url, headers);
+        if (res.statusCode !== 200) return [];
+        
+        const html = res.body;
+        const m3u8Match = html.match(/"manifestUrl"\s*:\s*"([^"]+)"/);
+        if (!m3u8Match) return [];
+        
+        const manifestUrl = m3u8Match[1].replace(/\\/g, '');
+        
+        const manifestHeaders = {
+            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
+            "Origin": "https://www.dailymotion.com",
+            "Referer": "https://www.dailymotion.com/"
+        };
+        
+        const mRes = await client.get(manifestUrl, manifestHeaders);
+        if (mRes.statusCode !== 200) return [];
+        
+        const manifestContent = mRes.body;
+        const videos = [];
+        
+        const lines = manifestContent.split('\n');
+        let currentStreamInfo = null;
+        
+        for (let line of lines) {
+            line = line.trim();
+            if (line.startsWith('#EXT-X-STREAM-INF:')) {
+                currentStreamInfo = line;
+            } else if (line.startsWith('http') && currentStreamInfo) {
+                let quality = "Video";
+                const nameMatch = currentStreamInfo.match(/NAME="([^"]+)"/);
+                const resMatch = currentStreamInfo.match(/RESOLUTION=\d+x(\d+)/);
+                
+                if (nameMatch) {
+                    quality = nameMatch[1] + "p";
+                } else if (resMatch) {
+                    quality = resMatch[1] + "p";
+                }
+                
+                let codecSuffix = "";
+                if (currentStreamInfo.includes("av01")) {
+                    codecSuffix = " (AV1)";
+                } else if (currentStreamInfo.includes("avc")) {
+                    codecSuffix = " (H264)";
+                }
+                
+                videos.push({
+                    url: line,
+                    quality: `${prefix} Dailymotion - ${quality}${codecSuffix}`,
+                    originalUrl: line,
+                    headers: {
+                        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"
+                    }
+                });
+                currentStreamInfo = null;
+            }
+        }
+        
+        return videos;
+    }
+    
     async getVideoList(url) {
         const client = new Client();
         const res = await client.get(url, this.getHeaders(url));
@@ -686,6 +753,13 @@ class DefaultExtension extends MProvider {
                 } catch (e) {
                     console.log(`Videa error: ${e}`);
                 }
+            } else if (decoded.includes("dailymotion.com")) {
+                try {
+                    const dmVideos = await this.customDailymotionExtractor(decoded, serverName);
+                    if (dmVideos) videos.push(...dmVideos);
+                } catch (e) {
+                    console.log(`Dailymotion error: ${e}`);
+                }
             } else if (decoded.startsWith("https://yonaplay.net/embed.php?id=")) {
                 try {
                     const yonaHeaders = {
@@ -722,6 +796,9 @@ class DefaultExtension extends MProvider {
                                 } else if (subUrl.includes("videa.hu") || subUrl.includes("videakid.hu")) {
                                     const videaVideos = await this.customVideaExtractor(subUrl, `${serverName} (Yona)`);
                                     if (videaVideos) videos.push(...videaVideos);
+                                } else if (subUrl.includes("dailymotion.com")) {
+                                    const dmVideos = await this.customDailymotionExtractor(subUrl, `${serverName} (Yona)`);
+                                    if (dmVideos) videos.push(...dmVideos);
                                 }
                             }
                         }
