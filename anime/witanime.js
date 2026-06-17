@@ -6,9 +6,9 @@ const mangayomiSources = [{
     "iconUrl": "https://witanime.you/wp-content/uploads/2023/08/cropped-Logo-WITU-192x192.png",
     "typeSource": "single",
     "itemType": 1,
-    "version": "0.0.10",
+    "version": "0.0.11",
     "pkgPath": "",
-    "notes": "Filter out deleted Mp4Upload streams"
+    "notes": "Scrape Mp4Upload stream links from the download section"
 }];
 
 class DefaultExtension extends MProvider {
@@ -849,6 +849,21 @@ class DefaultExtension extends MProvider {
             return results;
         };
 
+        const extractFromMp4UploadDownload = async (mp4Url, qualityLabel) => {
+            try {
+                let embedUrl = mp4Url;
+                const mp4match = mp4Url.match(/mp4upload\.com\/(?:embed-)?([a-zA-Z0-9]+)(?:\.html)?/);
+                if (mp4match) {
+                    embedUrl = `https://www.mp4upload.com/embed-${mp4match[1]}.html`;
+                }
+                const prefixName = `Mp4Upload (Download) - ${qualityLabel}`;
+                return await this.customMp4UploadExtractor(embedUrl, prefixName);
+            } catch (e) {
+                console.log(`Mp4Upload download extraction error: ${e}`);
+            }
+            return [];
+        };
+
         const serverPromises = [];
         for (const element of serverElements) {
             const serverIdStr = element.attr('data-server-id');
@@ -885,6 +900,87 @@ class DefaultExtension extends MProvider {
                 setTimeout(() => { console.log(`Server ${serverName} timed out`); resolve([]); }, 15000);
             });
             serverPromises.push(Promise.race([extractFromServer(decoded, serverName), timeoutGuard]));
+        }
+
+        // Parse download qualities for Mp4Upload
+        try {
+            const mrMatch = html.match(/_m\s*=\s*\{"r"\s*:\s*"([^"]+)"\}/);
+            const tlMatch = html.match(/_t\s*=\s*\{"l"\s*:\s*"([^"]+)"\}/);
+            const sMatch = html.match(/_s\s*=\s*(\[[^\]]+\]);/);
+            
+            if (mrMatch && tlMatch && sMatch) {
+                const secret = this.base64Decode(mrMatch[1]);
+                const count = parseInt(tlMatch[1], 10);
+                const sList = JSON.parse(sMatch[1]);
+                
+                const pVars = {};
+                for (let i = 0; i < count; i++) {
+                    const pMatch = html.match(new RegExp(`_p${i}\\s*=\\s*(\\[[^\\]]*\\]);`));
+                    if (pMatch) {
+                        pVars[i] = JSON.parse(pMatch[1]);
+                    }
+                }
+                
+                const decryptWitUrl = (rawHex, secretKey) => {
+                    let out = "";
+                    const bytes = [];
+                    for (let k = 0; k < rawHex.length; k += 2) {
+                        bytes.push(parseInt(rawHex.substr(k, 2), 16));
+                    }
+                    const keylen = secretKey.length;
+                    for (let k = 0; k < bytes.length; k++) {
+                        out += String.fromCharCode(bytes[k] ^ secretKey.charCodeAt(k % keylen));
+                    }
+                    return out;
+                };
+
+                const qualityLists = doc.select('ul.quality-list');
+                for (const ul of qualityLists) {
+                    const firstLi = ul.selectFirst('li');
+                    const labelText = firstLi ? firstLi.text.trim() : "";
+                    let qualityLabel = "";
+                    if (labelText.includes("SD")) qualityLabel = "SD";
+                    else if (labelText.includes("HD")) qualityLabel = "HD";
+                    else if (labelText.includes("FHD")) qualityLabel = "FHD";
+                    else qualityLabel = labelText;
+
+                    const downloadLinks = ul.select('a.download-link');
+                    for (const link of downloadLinks) {
+                        const spanNotice = link.selectFirst('span.notice');
+                        const hostName = spanNotice ? spanNotice.text.trim().toLowerCase() : "";
+                        if (hostName.includes("mp4upload")) {
+                            const dataIndexStr = link.attr('data-index');
+                            if (dataIndexStr) {
+                                const dataIndex = parseInt(dataIndexStr, 10);
+                                if (dataIndex < count && sList[dataIndex] && pVars[dataIndex]) {
+                                    try {
+                                        const seqDecrypted = decryptWitUrl(sList[dataIndex], secret);
+                                        const seq = JSON.parse(seqDecrypted);
+                                        const chunks = pVars[dataIndex];
+                                        const decryptedChunks = chunks.map(chunk => decryptWitUrl(chunk, secret));
+
+                                        const arranged = new Array(seq.length);
+                                        for (let j = 0; j < seq.length; j++) {
+                                            arranged[seq[j]] = decryptedChunks[j];
+                                        }
+                                        const finalUrl = arranged.join("");
+                                        if (finalUrl) {
+                                            const mp4TimeoutGuard = new Promise((resolve) => {
+                                                setTimeout(() => { console.log(`Mp4Upload download ${qualityLabel} timed out`); resolve([]); }, 15000);
+                                            });
+                                            serverPromises.push(Promise.race([extractFromMp4UploadDownload(finalUrl, qualityLabel), mp4TimeoutGuard]));
+                                        }
+                                    } catch (err) {
+                                        console.log(`Decrypt error for index ${dataIndex}: ${err}`);
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        } catch (e) {
+            console.log(`Error parsing download section: ${e}`);
         }
 
         const allResults = await Promise.all(serverPromises);
