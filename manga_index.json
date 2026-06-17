@@ -1,0 +1,20 @@
+[
+  {
+    "id": 128848179,
+    "name": "TeamX",
+    "baseUrl": "https://olympustaff.com",
+    "lang": "ar",
+    "iconUrl": "https://www.google.com/s2/favicons?sz=256&domain=https://olympustaff.com",
+    "typeSource": "single",
+    "itemType": 0,
+    "version": "0.1.0",
+    "notes": "TeamX JS Extension",
+    "sourceCode": "",
+    "sourceCodeUrl": "https://raw.githubusercontent.com/9vsv6/mangayomi-ar-extensions/main/manga/teamx.js",
+    "sourceCodeLanguage": 1,
+    "isActive": true,
+    "isAdded": false,
+    "isNsfw": false,
+    "appMinVerReq": "0.0.1"
+  }
+]
