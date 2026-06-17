@@ -7,7 +7,7 @@ const mangayomiSources = [{
     "iconUrl": "https://www.google.com/s2/favicons?sz=256&domain=https://markazriwayat.com",
     "typeSource": "single",
     "itemType": 2,
-    "version": "0.0.1",
+    "version": "0.0.2",
     "pkgPath": "novel/src/ar/markazriwayat.js",
     "notes": ""
 }];
@@ -105,6 +105,27 @@ class DefaultExtension extends MProvider {
   }
 
   async getPopular(page) {
+    if (page === 1) {
+      const res = await new Client().get(`${this.getBaseUrl()}/popular/`, this.headers);
+      if (res.statusCode !== 200) {
+        throw new Error(`Failed to fetch popular page: ${res.statusCode}`);
+      }
+      const doc = new Document(res.body);
+      const elements = doc.select("a.lib-card");
+      const list = [];
+      for (const el of elements) {
+        const titleEl = el.selectFirst(".lib-card__title");
+        const name = titleEl ? titleEl.text.trim() : "";
+        const imgEl = el.selectFirst("img");
+        const imageUrl = imgEl ? (imgEl.attr("data-src") || imgEl.attr("src") || "") : "";
+        const link = el.attr("href") || "";
+        if (name && link) {
+          list.push({ name, imageUrl, link });
+        }
+      }
+      return { list, hasNextPage: true };
+    }
+
     const { restUrl } = await this.getNonceAndRestUrl();
     const apiHeaders = await this.getApiHeaders();
     const res = await new Client().get(
@@ -124,6 +145,27 @@ class DefaultExtension extends MProvider {
   }
 
   async getLatestUpdates(page) {
+    if (page === 1) {
+      const res = await new Client().get(this.getBaseUrl(), this.headers);
+      if (res.statusCode !== 200) {
+        throw new Error(`Failed to fetch homepage: ${res.statusCode}`);
+      }
+      const doc = new Document(res.body);
+      const elements = doc.select("article.latest-card");
+      const list = [];
+      for (const el of elements) {
+        const titleEl = el.selectFirst("a.latest-title");
+        const name = titleEl ? titleEl.text.trim() : "";
+        const imgEl = el.selectFirst("a.latest-cover img");
+        const imageUrl = imgEl ? (imgEl.attr("data-src") || imgEl.attr("src") || "") : "";
+        const link = titleEl ? (titleEl.attr("href") || "") : "";
+        if (name && link) {
+          list.push({ name, imageUrl, link });
+        }
+      }
+      return { list, hasNextPage: true };
+    }
+
     const { restUrl } = await this.getNonceAndRestUrl();
     const apiHeaders = await this.getApiHeaders();
     const res = await new Client().get(
