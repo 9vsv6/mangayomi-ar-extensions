@@ -121,43 +121,49 @@ class DefaultExtension extends MProvider {
     const res = await new Client().get(url, this.headers);
     const doc = new Document(res.body);
     const info = doc.selectFirst("div.sertoinfo");
+    if (!info) {
+        throw new Error("Could not find novel info section");
+    }
     const subInfo = info.selectFirst("div.sertoauth");
-    const rewName = info.selectFirst("h1.entry-title").text;
+    const titleEl = info.selectFirst("h1.entry-title");
+    const rewName = titleEl ? titleEl.text.trim() : "";
 
     const name = this.cleanTitle(rewName);
     const imageUrl = doc.selectFirst("img.attachment-post-thumbnail")?.getSrc;
-    const scanlator = subInfo.selectFirst(".serl:contains('المترجم') a").text;
+    const scanlatorEl = subInfo ? subInfo.selectFirst(".serl:contains('المترجم') a") : null;
+    const scanlator = scanlatorEl ? scanlatorEl.text.trim() : "";
 
-    let description =
-      info.selectFirst("div.sersys.entry-content p").text + "\n\n";
-    const lang = subInfo.selectFirst(
-      ".serl:contains('اللغة الأم') .serval",
-    )?.text;
-    if (lang) description += `اللغة الأم: ${lang}\n`;
-    const releaseYear = subInfo.selectFirst(
-      ".serl:contains('صدر في سنة') .serval",
-    )?.text;
-    if (releaseYear) description += `سنة الصدور: ${releaseYear}\n`;
-    const types = subInfo
-      .select(".serl:contains('نوع') a")
-      .map((el) => el.text)
-      .join(", ");
-    if (types) description += `الانواع: ${types}\n`;
+    const descEl = info.selectFirst("div.sersys.entry-content p");
+    let description = descEl ? descEl.text.trim() + "\n\n" : "";
+    if (subInfo) {
+        const lang = subInfo.selectFirst(".serl:contains('اللغة الأم') .serval")?.text;
+        if (lang) description += `اللغة الأم: ${lang}\n`;
+        const releaseYear = subInfo.selectFirst(".serl:contains('صدر في سنة') .serval")?.text;
+        if (releaseYear) description += `سنة الصدور: ${releaseYear}\n`;
+        const types = subInfo.select(".serl:contains('نوع') a").map((el) => el.text).join(", ");
+        if (types) description += `الانواع: ${types}\n`;
+    }
     const altTitle = this.cleanTitle(info.selectFirst("span.alter")?.text);
     if (altTitle) description += `اسم آخر للعمل: ${altTitle}\n`;
 
     const genre = info.select("div.sertogenre a").map((el) => el.text);
-    const author = subInfo.selectFirst(".serl:contains('الكاتب') a").text;
-    const status = this.toStatus(info.selectFirst("div.sertostat span").text);
+    const authorEl = subInfo ? subInfo.selectFirst(".serl:contains('الكاتب') a") : null;
+    const author = authorEl ? authorEl.text.trim() : "";
+    
+    const statusEl = info.selectFirst("div.sertostat span");
+    const status = statusEl ? this.toStatus(statusEl.text.trim()) : 5;
 
     const chapters = [];
     for (const el of doc.select("div.sertobody div.bixbox ul li > a")) {
       const url = el.getHref;
-      const dateUpload = this.parseDate(el.selectFirst("div.epl-date").text);
+      const dateEl = el.selectFirst("div.epl-date");
+      const dateUpload = dateEl ? this.parseDate(dateEl.text.trim()) : "";
 
       // Chapter name
-      let title = el.selectFirst("div.epl-title").text.trim();
-      const num = el.selectFirst("div.epl-num").text.trim();
+      const titleEpEl = el.selectFirst("div.epl-title");
+      let title = titleEpEl ? titleEpEl.text.trim() : "";
+      const numEpEl = el.selectFirst("div.epl-num");
+      const num = numEpEl ? numEpEl.text.trim() : "";
 
       if (title.includes(num)) title = title.replace(num, "").trim();
       if (title.includes(rewName)) title = title.replace(rewName, "").trim();
@@ -189,25 +195,23 @@ class DefaultExtension extends MProvider {
     };
   }
 
-  extractIdFromUrl(url) {
-    const match = url.match(/-(\d+)\/?$/);
-    return match ? match[1] : null;
-  }
-
   // For novel html content
   async getHtmlContent(name, url) {
-    const id = this.extractIdFromUrl(url);
-    const res = await new Client().get(
-      `${this.getBaseUrl()}/wp-json/wp/v2/posts/${id}`,
-      this.headers,
-    );
-
-    return this.cleanHtmlContent(JSON.parse(res.body));
-  }
-
-  // Clean html up for reader
-  async cleanHtmlContent(html) {
-    return `<h2 style="text-align: center;">${this.cleanTitle(html.title.rendered)}</h2><hr><br>${html.content.rendered}`;
+    const res = await new Client().get(url, this.headers);
+    if (res.statusCode !== 200) {
+      throw new Error(`Failed to fetch chapter content: ${res.statusCode}`);
+    }
+    
+    const doc = new Document(res.body);
+    const titleEl = doc.selectFirst("h1.entry-title");
+    const title = titleEl ? titleEl.text.trim() : name;
+    
+    const contentEl = doc.selectFirst("div.epcontent") || doc.selectFirst("div.entry-content");
+    if (!contentEl) {
+      throw new Error("Could not find chapter content in HTML");
+    }
+    
+    return `<h2 style="text-align: center;">${this.cleanTitle(title)}</h2><hr><br>${contentEl.outerHtml}`;
   }
 
   getFilterList() {
