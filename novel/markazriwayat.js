@@ -358,14 +358,15 @@ class DefaultExtension extends MProvider {
       throw new Error("Could not find chapter content in HTML");
     }
 
-    // Remove hidden anti-scraping watermark spans injected between paragraphs
-    // (e.g. <span class="theam-chobf">...مركز الروايات...</span>).
-    const chobfElements = contentEl.select("span.theam-chobf");
-    for (const el of chobfElements) {
-      el.remove();
-    }
+    // Strip hidden anti-scraping watermark spans injected between paragraphs
+    // (e.g. <span class="theam-chobf">...مركز الروايات...</span>). Element
+    // nodes in this engine have no .remove(), so remove them from the HTML.
+    const html = contentEl.outerHtml.replace(
+      /<span\b[^>]*class="[^"]*\btheam-chobf\b[^"]*"[^>]*>[\s\S]*?<\/span>/gi,
+      ""
+    );
 
-    return `<h2 style="text-align: center;">${this.cleanTitle(title)}</h2><hr><br>${contentEl.outerHtml}`;
+    return `<h2 style="text-align: center;">${this.cleanTitle(title)}</h2><hr><br>${html}`;
   }
 
   getFilterList() {
