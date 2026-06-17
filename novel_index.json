@@ -16,5 +16,23 @@
     "isAdded": false,
     "isNsfw": false,
     "appMinVerReq": "0.0.1"
+  },
+  {
+    "id": 7301511,
+    "name": "مركز الروايات",
+    "baseUrl": "https://markazriwayat.com",
+    "lang": "ar",
+    "iconUrl": "https://www.google.com/s2/favicons?sz=256&domain=https://markazriwayat.com",
+    "typeSource": "single",
+    "itemType": 2,
+    "version": "0.0.1",
+    "notes": "مركز الروايات JS Extension",
+    "sourceCode": "",
+    "sourceCodeUrl": "https://raw.githubusercontent.com/9vsv6/mangayomi-ar-extensions/main/novel/markazriwayat.js",
+    "sourceCodeLanguage": 1,
+    "isActive": true,
+    "isAdded": false,
+    "isNsfw": false,
+    "appMinVerReq": "0.0.1"
   }
 ]
