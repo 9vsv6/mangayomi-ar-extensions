@@ -7,7 +7,7 @@ const mangayomiSources = [{
     "iconUrl": "https://www.google.com/s2/favicons?sz=256&domain=https://www.mknov.com",
     "typeSource": "single",
     "itemType": 2,
-    "version": "0.0.1",
+    "version": "0.0.2",
     "pkgPath": "novel/src/ar/mknov.js",
     "notes": ""
 }];
@@ -83,10 +83,14 @@ class DefaultExtension extends MProvider {
     var works = Array.isArray(data.works) ? data.works : [];
     var list = [];
     for (var w = 0; w < works.length; w++) {
+      var imgUrl = works[w].image_url || "";
+      if (imgUrl.startsWith("/")) {
+        imgUrl = this.getBaseUrl() + imgUrl;
+      }
       list.push({
         name: works[w].name || "",
-        imageUrl: works[w].image_url || "",
-        link: "/novel/" + works[w].id,
+        imageUrl: imgUrl,
+        link: this.getBaseUrl() + "/novel/" + works[w].id,
       });
     }
     var hasNextPage = data.pagination ? data.pagination.hasMore === true : false;
@@ -126,6 +130,9 @@ class DefaultExtension extends MProvider {
   }
 
   async getDetail(url) {
+    if (url.startsWith("/")) {
+      url = this.getBaseUrl() + url;
+    }
     var res = await new Client().get(url, this.headers);
     if (res.statusCode !== 200) throw new Error("Failed to fetch detail page: " + res.statusCode);
     var rsc = this.extractRscPayload(res.body);
@@ -154,6 +161,9 @@ class DefaultExtension extends MProvider {
 
     var name = novel.name || "";
     var imageUrl = novel.image_url || "";
+    if (imageUrl.startsWith("/")) {
+      imageUrl = this.getBaseUrl() + imageUrl;
+    }
     var description = (novel.story || "") + "\n\n";
     var genre = Array.isArray(novel.tags) ? novel.tags : [];
     var author = novel.author || "";
@@ -167,7 +177,7 @@ class DefaultExtension extends MProvider {
         var chNum = ch.chapter_number || "";
         var chTitle = ch.chapter_title || "";
         var chName = chNum ? (chNum + (chTitle ? ": " + chTitle : "")) : (chTitle || "?");
-        var chapterUrl = "/novel/" + ch.work_id + "/chapter/" + ch.id;
+        var chapterUrl = this.getBaseUrl() + "/novel/" + ch.work_id + "/chapter/" + ch.id;
         var dateUpload = ch.publish_datetime ? new Date(ch.publish_datetime).getTime().toString() : "";
         chapters.push({ name: chName, url: chapterUrl, dateUpload: dateUpload, scanlator: "" });
       }
@@ -177,6 +187,9 @@ class DefaultExtension extends MProvider {
   }
 
   async getHtmlContent(name, url) {
+    if (url.startsWith("/")) {
+      url = this.getBaseUrl() + url;
+    }
     var res = await new Client().get(url, this.headers);
     if (res.statusCode !== 200) throw new Error("Failed to fetch chapter content: " + res.statusCode);
 

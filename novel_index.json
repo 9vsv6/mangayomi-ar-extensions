@@ -18,14 +18,14 @@
     "appMinVerReq": "0.0.1"
   },
   {
-    "id": 98427563,
+    "id": 1029230790,
     "name": "مملكة الروايات",
     "baseUrl": "https://www.mknov.com",
     "lang": "ar",
     "iconUrl": "https://www.google.com/s2/favicons?sz=256&domain=https://www.mknov.com",
     "typeSource": "single",
     "itemType": 2,
-    "version": "0.0.1",
+    "version": "0.0.2",
     "notes": "مملكة الروايات JS Extension",
     "sourceCode": "",
     "sourceCodeUrl": "https://raw.githubusercontent.com/9vsv6/mangayomi-ar-extensions/main/novel/mknov.js",
