@@ -8,7 +8,7 @@ const mangayomiSources = [{
     "iconUrl": "https://raw.githubusercontent.com/kodjodevf/mangayomi-extensions/main/dart/manga/multisrc/madara/src/ar/azora/icon.png",
     "typeSource": "single",
     "itemType": 0,
-    "version": "0.2.0",
+    "version": "0.2.1",
     "isNsfw": false,
     "pkgPath": "manga/src/ar/azora.js"
 }];
@@ -176,9 +176,18 @@ class DefaultExtension extends MProvider {
     
     // Try to extract metadata from Astro serialized props
     let post = null;
+    let urlSlug = "";
+    try {
+      const parts = url.split("/series/");
+      if (parts.length > 1) {
+        urlSlug = parts[1].split("/")[0].split("?")[0].split("#")[0].trim();
+      }
+    } catch (e) {}
+
     const htmlStr = doc.outerHtml;
     const propsRegex = /props=["'](\{[\s\S]*?\})["']/g;
     let match;
+    const candidatePosts = [];
     while ((match = propsRegex.exec(htmlStr)) !== null) {
       const decodedProps = match[1].replace(/&quot;/g, '"')
                                     .replace(/&amp;/g, '&')
@@ -206,11 +215,17 @@ class DefaultExtension extends MProvider {
           };
           const unwrapped = unwrap(parsed);
           if (unwrapped && unwrapped.post) {
-            post = unwrapped.post;
-            break;
+            candidatePosts.push(unwrapped.post);
           }
         } catch (e) {}
       }
+    }
+
+    if (urlSlug) {
+      post = candidatePosts.find(p => p.slug === urlSlug);
+    }
+    if (!post && candidatePosts.length > 0) {
+      post = candidatePosts[0];
     }
     
     // Parse using properties if found, otherwise fall back to HTML selectors

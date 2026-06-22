@@ -43,7 +43,7 @@
     "iconUrl": "https://raw.githubusercontent.com/kodjodevf/mangayomi-extensions/main/dart/manga/multisrc/madara/src/ar/azora/icon.png",
     "typeSource": "single",
     "itemType": 0,
-    "version": "0.2.0",
+    "version": "0.2.1",
     "notes": "Azora JS Extension",
     "sourceCode": "",
     "sourceCodeUrl": "https://raw.githubusercontent.com/9vsv6/mangayomi-ar-extensions/main/manga/azora.js",
