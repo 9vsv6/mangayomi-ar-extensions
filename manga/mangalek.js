@@ -3,12 +3,12 @@ const mangayomiSources = [{
     "id": 290673359,
     "name": "مانجا ليك",
     "lang": "ar",
-    "baseUrl": "https://lekmanga.net",
+    "baseUrl": "https://lek-manga.net",
     "apiUrl": "",
     "iconUrl": "https://raw.githubusercontent.com/kodjodevf/mangayomi-extensions/main/dart/manga/multisrc/madara/src/ar/mangalek/icon.png",
     "typeSource": "single",
     "itemType": 0,
-    "version": "0.1.7",
+    "version": "0.1.8",
     "isNsfw": false,
     "pkgPath": "manga/src/ar/mangalek.js"
 }];
@@ -50,7 +50,6 @@ class DefaultExtension extends MProvider {
     url = url || this.getBaseUrl();
     return {
       Referer: `${url}/`,
-      "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/143.0.0.0 Safari/537.36",
     };
   }
 
@@ -71,6 +70,11 @@ class DefaultExtension extends MProvider {
       
       const name = postTitle.text.trim();
       const link = postTitle.getHref;
+      
+      const host = this.getBaseUrl().replace("https://", "").replace("http://", "").split("/")[0];
+      if (link && !link.includes(host) && link.includes("://")) {
+        continue;
+      }
       
       const imgEl = el.selectFirst("img");
       let imageUrl = "";
@@ -178,8 +182,9 @@ class DefaultExtension extends MProvider {
       chapters = this.getChaptersFromHtml(chapDoc);
       
       if (chapters.length === 0) {
+        let ajaxUrl = url.endsWith('/') ? url + 'ajax/chapters/' : url + '/ajax/chapters/';
         res = await client.post(
-          `${url}/ajax/chapters/`,
+          ajaxUrl,
           headers,
           ""
         );
@@ -260,7 +265,7 @@ class DefaultExtension extends MProvider {
         editTextPreference: {
           title: "تحرير الرابط",
           summary: "",
-          value: "https://lekmanga.net",
+          value: "https://lek-manga.net",
           dialogTitle: "URL",
           dialogMessage: "",
         },
