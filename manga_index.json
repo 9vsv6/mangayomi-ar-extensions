@@ -98,7 +98,7 @@
     "iconUrl": "https://mangatime.org/images/logo-64.png",
     "typeSource": "single",
     "itemType": 0,
-    "version": "0.0.1",
+    "version": "0.0.2",
     "notes": "MangaTime JS Extension",
     "sourceCode": "",
     "sourceCodeUrl": "https://raw.githubusercontent.com/9vsv6/mangayomi-ar-extensions/main/manga/mangatime.js",

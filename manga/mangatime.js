@@ -7,7 +7,7 @@ const mangayomiSources = [{
     "iconUrl": "https://mangatime.org/images/logo-64.png",
     "typeSource": "single",
     "itemType": 0,
-    "version": "0.0.1",
+    "version": "0.0.2",
     "pkgPath": "",
     "isNsfw": false,
     "notes": "MangaTime JS Extension",
@@ -234,5 +234,20 @@ class DefaultExtension extends MProvider {
 
     getFilterList() {
         return [];
+    }
+
+    getSourcePreferences() {
+        return [
+            {
+                key: "domain_url",
+                editTextPreference: {
+                    title: "Override Base URL",
+                    summary: "",
+                    value: "https://mangatime.org",
+                    dialogTitle: "Override Base URL",
+                    dialogMessage: ""
+                }
+            }
+        ];
     }
 }
