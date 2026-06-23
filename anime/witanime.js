@@ -6,9 +6,25 @@ const mangayomiSources = [{
     "iconUrl": "https://witanime.you/wp-content/uploads/2023/08/cropped-Logo-WITU-192x192.png",
     "typeSource": "single",
     "itemType": 1,
-    "version": "0.0.21",
+    "version": "0.0.22",
     "pkgPath": "",
-    "notes": "Fix Dailymotion quality selection and AV1 audio issue, scrape Mp4Upload stream links, add support for 4shared, videas, dotplay"
+    "notes": "Move settings preferences to source metadata",
+    "preferences": [
+        {
+            "key": "pref_quality",
+            "name": "Preferred Quality",
+            "type": "List",
+            "list": ["1080p", "720p", "480p", "360p", "Auto"],
+            "value": "1080p"
+        },
+        {
+            "key": "pref_server",
+            "name": "Preferred Server",
+            "type": "List",
+            "list": ["Dailymotion", "StreamWish", "Mp4Upload", "Mp4Upload (Download)", "Yonaplay", "Videa", "Videas", "DotPlay", "Any Server"],
+            "value": "Mp4Upload"
+        }
+    ]
 }];
 
 class DefaultExtension extends MProvider {
@@ -1236,10 +1252,12 @@ class DefaultExtension extends MProvider {
             let score = 0;
             const qualityStr = video.quality;
             const qLower = qualityStr.toLowerCase();
+            const prefQualityLow = preferredQuality.toLowerCase();
+            const prefServerLow = preferredServer.toLowerCase();
 
             // 1. Check preferred quality match
-            if (preferredQuality !== "auto") {
-                if (qLower.includes(preferredQuality)) {
+            if (prefQualityLow !== "auto") {
+                if (qLower.includes(prefQualityLow)) {
                     score += 10000;
                 }
             } else {
@@ -1249,8 +1267,8 @@ class DefaultExtension extends MProvider {
             }
 
             // 2. Check preferred server match
-            if (preferredServer !== "any") {
-                if (qLower.includes(preferredServer.toLowerCase())) {
+            if (prefServerLow !== "any" && prefServerLow !== "any server") {
+                if (qLower.includes(prefServerLow)) {
                     score += 5000;
                 }
             }
@@ -1312,31 +1330,6 @@ class DefaultExtension extends MProvider {
                     { type_name: 'SelectOption', name: 'ONA', value: 'anime-type/ona/' },
                     { type_name: 'SelectOption', name: 'Special', value: 'anime-type/special/' }
                 ]
-            }
-        ];
-    }
-    
-    getSourcePreferences() {
-        return [
-            {
-                key: "pref_quality",
-                listPreference: {
-                    title: "Preferred Quality",
-                    summary: "Select your preferred video quality for streaming/downloading.",
-                    value: "1080p",
-                    entries: ["1080p", "720p", "480p", "360p", "Auto (Multi Quality)"],
-                    entryValues: ["1080p", "720p", "480p", "360p", "auto"]
-                }
-            },
-            {
-                key: "pref_server",
-                listPreference: {
-                    title: "Preferred Server",
-                    summary: "Select your preferred server. Note: Download-specific servers (e.g., Mp4Upload Download) are used for downloads.",
-                    value: "Mp4Upload",
-                    entries: ["Dailymotion", "StreamWish", "Mp4Upload", "Mp4Upload (Download)", "Yonaplay", "Videa", "Videas", "DotPlay", "Any Server"],
-                    entryValues: ["Dailymotion", "StreamWish", "Mp4Upload", "Mp4Upload (Download)", "yonaplay", "videa", "videas", "dotplay", "any"]
-                }
             }
         ];
     }
