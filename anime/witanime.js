@@ -6,9 +6,9 @@ const mangayomiSources = [{
     "iconUrl": "https://witanime.you/wp-content/uploads/2023/08/cropped-Logo-WITU-192x192.png",
     "typeSource": "single",
     "itemType": 1,
-    "version": "0.0.14",
+    "version": "0.0.21",
     "pkgPath": "",
-    "notes": "Scrape Mp4Upload stream links from the download section, and add support for 4shared, videas, and dotplay"
+    "notes": "Fix Dailymotion quality selection and AV1 audio issue, scrape Mp4Upload stream links, add support for 4shared, videas, dotplay"
 }];
 
 class DefaultExtension extends MProvider {
@@ -41,6 +41,27 @@ class DefaultExtension extends MProvider {
             }
         }
         return decoded;
+    }
+
+    base64Encode(str) {
+        const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/';
+        let encoded = '';
+        let i = 0;
+        while (i < str.length) {
+            const byte1 = str.charCodeAt(i++);
+            const byte2 = i < str.length ? str.charCodeAt(i++) : NaN;
+            const byte3 = i < str.length ? str.charCodeAt(i++) : NaN;
+            
+            const enc1 = byte1 >> 2;
+            const enc2 = ((byte1 & 3) << 4) | (isNaN(byte2) ? 0 : (byte2 >> 4));
+            const enc3 = isNaN(byte2) ? 64 : (((byte2 & 15) << 2) | (isNaN(byte3) ? 0 : (byte3 >> 6)));
+            const enc4 = isNaN(byte3) ? 64 : (byte3 & 63);
+            
+            encoded += chars.charAt(enc1) + chars.charAt(enc2) +
+                       (enc3 === 64 ? '=' : chars.charAt(enc3)) +
+                       (enc4 === 64 ? '=' : chars.charAt(enc4));
+        }
+        return encoded;
     }
 
     base64ToBytes(str) {
@@ -625,31 +646,160 @@ class DefaultExtension extends MProvider {
         }];
     }
     
+    absoluteUrl(subPath, masterUrl) {
+        if (subPath.startsWith("http")) return subPath;
+        const pathEndIndex = masterUrl.indexOf('?');
+        let cleanUrl = pathEndIndex !== -1 ? masterUrl.substring(0, pathEndIndex) : masterUrl;
+        let masterBase = cleanUrl.substring(0, cleanUrl.lastIndexOf('/')) + '/';
+        if (subPath.startsWith("/")) {
+            const hostMatch = masterUrl.match(/(https?:\/\/[^\/]+)/);
+            const host = hostMatch ? hostMatch[1] : "";
+            return host + subPath;
+        }
+        return masterBase + subPath;
+    }
+
+    base64Encode(str) {
+        const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/';
+        let result = '';
+        let i = 0;
+        while (i < str.length) {
+            const byte1 = str.charCodeAt(i++);
+            const byte2 = i < str.length ? str.charCodeAt(i++) : NaN;
+            const byte3 = i < str.length ? str.charCodeAt(i++) : NaN;
+
+            const enc1 = byte1 >> 2;
+            const enc2 = ((byte1 & 3) << 4) | (isNaN(byte2) ? 0 : (byte2 >> 4));
+            const enc3 = isNaN(byte2) ? 64 : (((byte2 & 15) << 2) | (isNaN(byte3) ? 0 : (byte3 >> 6)));
+            const enc4 = isNaN(byte3) ? 64 : (byte3 & 63);
+
+            result += chars.charAt(enc1) + chars.charAt(enc2) +
+                      (enc3 === 64 ? '=' : chars.charAt(enc3)) +
+                      (enc4 === 64 ? '=' : chars.charAt(enc4));
+        }
+        return result;
+    }
+
     async customDailymotionExtractor(url, prefix) {
         const client = new Client();
-        const headers = {
+        
+        // Support /embed/video/ID, /video/ID, dai.ly/ID
+        let videoIdMatch = url.match(/(?:dailymotion\.com\/(?:embed\/)?video\/|dai\.ly\/)([a-zA-Z0-9]+)/);
+        if (!videoIdMatch) {
+            // Backup match for local relative URLs
+            videoIdMatch = url.match(/(?:video|embed\/video)\/([a-zA-Z0-9]+)/);
+        }
+        if (!videoIdMatch) return [];
+        const videoId = videoIdMatch[1];
+        
+        const dmHeaders = {
             "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
-            "Referer": "https://witanime.you/"
+            "Referer": "https://www.dailymotion.com/"
         };
-        const res = await client.get(url, headers);
-        if (res.statusCode !== 200) return [];
-        
-        const html = res.body;
-        const m3u8Match = html.match(/"manifestUrl"\s*:\s*"([^"]+)"/);
-        if (!m3u8Match) return [];
-        
-        const manifestUrl = m3u8Match[1].replace(/\\/g, '');
-        
-        return [{
-            url: manifestUrl,
-            quality: `${prefix} Dailymotion - Auto (Multi Quality)`,
-            originalUrl: manifestUrl,
-            headers: {
-                "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
-                "Origin": "https://www.dailymotion.com",
-                "Referer": "https://www.dailymotion.com/"
+
+        const normalizeUrl = (u) => {
+            if (!u) return null;
+            return u.replace(/\\\//g, '/').replace(/\\\\/g, '');
+        };
+
+        // The master HLS manifest URL contains all quality variants AND audio group
+        // declarations. Returning the master URL for each quality label means the
+        // player receives a complete, valid HLS manifest with audio for every entry.
+        // This is exactly what Dailymotion's own player does and ensures reliable playback.
+        const buildQualityEntries = (masterUrl, qualities) => {
+            const qualityMap = [
+                { label: "1080p", keys: ["1080"] },
+                { label: "720p",  keys: ["720"] },
+                { label: "480p",  keys: ["480"] },
+                { label: "380p",  keys: ["380"] },
+                { label: "240p",  keys: ["240"] },
+                { label: "144p",  keys: ["144"] }
+            ];
+
+            const videos = [];
+            for (const q of qualityMap) {
+                let found = false;
+                for (const key of q.keys) {
+                    if (qualities[key] && qualities[key].length > 0) {
+                        found = true;
+                        break;
+                    }
+                }
+                if (!found) continue;
+
+                // Append unique fragment to prevent Mangayomi from deduplicating same-URL entries
+                videos.push({
+                    url: masterUrl + `#q=${q.label.replace('p', '')}`,
+                    quality: `${prefix} Dailymotion - ${q.label}`,
+                    originalUrl: masterUrl,
+                    headers: dmHeaders
+                });
             }
-        }];
+
+            if (videos.length === 0) {
+                videos.push({
+                    url: masterUrl,
+                    quality: `${prefix} Dailymotion - Auto`,
+                    originalUrl: masterUrl,
+                    headers: dmHeaders
+                });
+            }
+
+            return videos;
+        };
+
+        // Use the Dailymotion metadata API (single request - fast)
+        try {
+            const metadataUrl = `https://www.dailymotion.com/player/metadata/video/${videoId}`;
+            const metaRes = await client.get(metadataUrl, {
+                "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
+                "Accept": "application/json, text/plain, */*"
+            });
+            if (metaRes.statusCode === 200) {
+                const metaData = JSON.parse(metaRes.body);
+                const qualities = metaData && metaData.qualities;
+                if (qualities && qualities.auto && qualities.auto.length > 0) {
+                    const masterUrl = normalizeUrl(qualities.auto[0].url);
+                    if (masterUrl) {
+                        return buildQualityEntries(masterUrl, qualities);
+                    }
+                }
+            }
+        } catch (e) {
+            console.log(`Dailymotion metadata API error: ${e}`);
+        }
+        
+        // Fallback: embed page scraping
+        try {
+            const embedUrl = `https://www.dailymotion.com/embed/video/${videoId}`;
+            const res = await client.get(embedUrl, {
+                "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
+                "Referer": "https://witanime.you/"
+            });
+            if (res.statusCode === 200) {
+                const m3u8Match = res.body.match(/"manifestUrl"\s*:\s*"([^"]+)"/);
+                if (m3u8Match) {
+                    const masterUrl = normalizeUrl(m3u8Match[1]);
+                    if (masterUrl) {
+                        const videos = [];
+                        const standardQualities = ['1080p', '720p', '480p', '380p'];
+                        for (const q of standardQualities) {
+                            videos.push({
+                                url: masterUrl + `#q=${q.replace('p', '')}`,
+                                quality: `${prefix} Dailymotion - ${q}`,
+                                originalUrl: masterUrl,
+                                headers: dmHeaders
+                            });
+                        }
+                        return videos;
+                    }
+                }
+            }
+        } catch (e) {
+            console.log(`Dailymotion embed fallback error: ${e}`);
+        }
+        
+        return [];
     }
 
     async customFourSharedExtractor(url, prefix) {
@@ -1011,9 +1161,9 @@ class DefaultExtension extends MProvider {
                     const firstLi = ul.selectFirst('li');
                     const labelText = firstLi ? firstLi.text.trim() : "";
                     let qualityLabel = "";
-                    if (labelText.includes("SD")) qualityLabel = "SD";
+                    if (labelText.includes("FHD")) qualityLabel = "FHD";
                     else if (labelText.includes("HD")) qualityLabel = "HD";
-                    else if (labelText.includes("FHD")) qualityLabel = "FHD";
+                    else if (labelText.includes("SD")) qualityLabel = "SD";
                     else qualityLabel = labelText;
 
                     const downloadLinks = ul.select('a.download-link');
@@ -1061,6 +1211,56 @@ class DefaultExtension extends MProvider {
                 videos.push(...serverVideos);
             }
         }
+
+        let preferredQuality = "1080p";
+        let preferredServer = "any";
+        try {
+            const preferences = new SharedPreferences();
+            preferredQuality = preferences.get("pref_quality") || "1080p";
+            preferredServer = preferences.get("pref_server") || "any";
+        } catch (e) {
+            console.log(`Error reading preferences: ${e}`);
+        }
+
+        const getQualityRank = (qualityStr) => {
+            const q = qualityStr.toLowerCase();
+            if (q.includes("1080") || q.includes("fhd")) return 1080;
+            if (q.includes("720") || q.includes("hd")) return 720;
+            if (q.includes("480") || q.includes("sd")) return 480;
+            if (q.includes("360")) return 360;
+            if (q.includes("auto") || q.includes("multi")) return 1;
+            return 0;
+        };
+
+        const scoreVideo = (video) => {
+            let score = 0;
+            const qualityStr = video.quality;
+            const qLower = qualityStr.toLowerCase();
+
+            // 1. Check preferred quality match
+            if (preferredQuality !== "auto") {
+                if (qLower.includes(preferredQuality)) {
+                    score += 10000;
+                }
+            } else {
+                if (qLower.includes("auto") || qLower.includes("multi")) {
+                    score += 10000;
+                }
+            }
+
+            // 2. Check preferred server match
+            if (preferredServer !== "any") {
+                if (qLower.includes(preferredServer.toLowerCase())) {
+                    score += 5000;
+                }
+            }
+
+            // 3. Quality rank bonus (to prefer higher qualities)
+            score += getQualityRank(qualityStr);
+            return score;
+        };
+
+        videos.sort((a, b) => scoreVideo(b) - scoreVideo(a));
 
         return videos;
     }
@@ -1117,6 +1317,27 @@ class DefaultExtension extends MProvider {
     }
     
     getSourcePreferences() {
-        return [];
+        return [
+            {
+                key: "pref_quality",
+                listPreference: {
+                    title: "Preferred Quality",
+                    summary: "Select your preferred video quality for streaming/downloading.",
+                    value: "1080p",
+                    entries: ["1080p", "720p", "480p", "360p", "Auto (Multi Quality)"],
+                    entryValues: ["1080p", "720p", "480p", "360p", "auto"]
+                }
+            },
+            {
+                key: "pref_server",
+                listPreference: {
+                    title: "Preferred Server",
+                    summary: "Select your preferred server. Note: Download-specific servers (e.g., Mp4Upload Download) are used for downloads.",
+                    value: "Mp4Upload",
+                    entries: ["Dailymotion", "StreamWish", "Mp4Upload", "Mp4Upload (Download)", "Yonaplay", "Videa", "Videas", "DotPlay", "Any Server"],
+                    entryValues: ["Dailymotion", "StreamWish", "Mp4Upload", "Mp4Upload (Download)", "yonaplay", "videa", "videas", "dotplay", "any"]
+                }
+            }
+        ];
     }
 }
