@@ -8,7 +8,7 @@ const mangayomiSources = [{
     "iconUrl": "https://www.google.com/s2/favicons?sz=256&domain=https://manga-spark.net",
     "typeSource": "single",
     "itemType": 0,
-    "version": "0.1.9",
+    "version": "0.2.0",
     "isNsfw": false,
     "pkgPath": "manga/src/ar/mangaspark.js"
 }];
@@ -46,6 +46,7 @@ class DefaultExtension extends MProvider {
     url = url || this.getBaseUrl();
     return {
       Referer: `${url}/`,
+      "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
     };
   }
 
@@ -192,25 +193,29 @@ class DefaultExtension extends MProvider {
     const recommendations = [];
     const relEls = doc.select("div.related-reading-wrap");
     for (const el of relEls) {
-      const aEl = el.selectFirst("h5.widget-title a") || el.selectFirst("div.related-reading-content a");
+      const aEl = el.selectFirst("a");
       if (aEl) {
-        const name = aEl.text.trim();
+        const name = aEl.attr("title")?.trim() || el.selectFirst("h5.widget-title")?.text?.trim() || "";
         const link = aEl.getHref;
         
         const imgEl = el.selectFirst("img");
         let imageUrl = "";
         if (imgEl) {
-          imageUrl = imgEl.attr("data-src") || imgEl.attr("data-lazy-src") || imgEl.attr("srcset")?.split(" ")[0] || imgEl.getSrc || imgEl.attr("src") || "";
+          imageUrl = imgEl.attr("data-src") || imgEl.attr("data-lazy-src") || imgEl.getSrc || imgEl.attr("src") || "";
           imageUrl = imageUrl.trim().split(" ")[0];
         }
         
-        recommendations.push({
-          name: name,
-          imageUrl: imageUrl,
-          link: link
-        });
+        if (name && link) {
+          recommendations.push({
+            name: name,
+            imageUrl: imageUrl,
+            link: link
+          });
+        }
       }
     }
+    
+    console.log("Manga Spark Recommendations parsed count: " + recommendations.length);
     
     return {
       title,
