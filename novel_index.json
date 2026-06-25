@@ -61,7 +61,7 @@
     "iconUrl": "https://www.google.com/s2/favicons?sz=256&domain=https://cenele.com",
     "typeSource": "single",
     "itemType": 2,
-    "version": "0.0.1",
+    "version": "0.0.2",
     "notes": "Novel Space JS Extension",
     "sourceCode": "",
     "sourceCodeUrl": "https://raw.githubusercontent.com/9vsv6/mangayomi-ar-extensions/main/novel/cenele.js",
